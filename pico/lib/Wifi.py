@@ -5,10 +5,11 @@ from time import sleep
 from constants.constants import get_debug
 
 status_map = {
-    01: "Connecting",
+    3: "Got IP (Connection Successful)",
+    1: "Connecting",
+    2:  "Connected, No IP",
+    0: "Idle",
     -1: "Connection Failed",
-    03: "Got IP (Connection Successful)",
-    00: "Idle",
     -2: "No Access Point Found",
     -3: "Wrong Password"
 }

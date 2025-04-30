@@ -9,6 +9,7 @@ import machine
 
 # Heartbeat flashes the onboard LED to signal that we're alive and we'ven't crashed, also feeds watchdog
 hb = Heartbeat()
+hb.hb()
 
 # Works with the Analog Muxer to read the current from our 16 inputs
 reader = CurrentReader()

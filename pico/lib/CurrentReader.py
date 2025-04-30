@@ -1,8 +1,9 @@
+import math
 from machine import I2C, Pin
 from time import ticks_ms
 from lib.external.ADS1115 import ADS1115
 from lib.Mux16 import Mux16
-from constants.constants import get_debug, CT_MULTIPLIER
+from constants.constants import CALIBRATION_DATA_1, CALIBRATION_DATA_2, CT_OFFSET, USE_CALIBRATION, get_debug, CT_MULTIPLIER
 
 d_print = get_debug("ADS")
 
@@ -15,6 +16,38 @@ def __get_ads(address, i2c):
     except:
         d_print(f"ADS addressed with {str(address)} unavaliable")
         return None
+    
+    
+# Calculate RMS
+def calculate_rms(data):
+    if not data:
+        return 0
+    squared_sum = sum(x * x for x in data)
+    return (math.sqrt(squared_sum / len(data)))
+
+def linear_filter(raw_voltage):
+    if USE_CALIBRATION:
+        amperage_pt1, voltage_pt1 = CALIBRATION_DATA_1
+        amperage_pt2, voltage_pt2 = CALIBRATION_DATA_2 
+
+        # Calculate the slope (gain) of the linear relationship (Amps per Volt).
+        slope = (amperage_pt2 - amperage_pt1) / (voltage_pt2 - voltage_pt1)
+
+        # Calculate the y-intercept (offset) of the linear relationship (Amps).
+        offset = -slope * voltage_pt1
+
+        # Apply the linear transformation to get the calibrated current.
+        calibrated_current = (slope * raw_voltage) + offset
+
+        return calibrated_current
+    else:
+        # Apply the generic multiplier
+        amps = (raw_voltage * CT_MULTIPLIER) - CT_OFFSET
+        
+        if amps < 0:
+            amps = 0
+            
+        return amps
 
 class CurrentReader:
     def __init__(self):
@@ -64,51 +97,44 @@ class CurrentReader:
         # Record Start time
         start_time = ticks_ms()
 
-        # Accumulators and counter
-        max_0 = 0
-        max_1 = 0
-        max_2 = 0
-        max_3 = 0
-        counter = 0
+        # Lists to store raw readings for each ADS
+        readings_0 = []
+        readings_1 = []
+        readings_2 = []
+        readings_3 = []
 
         # Loop until returned
-        while(True):
-            if ticks_ms() - start_time <= 1000:
-                # Check ADS #1
-                if self.ads_0 is not None:
-                    raw = self.ads_0.read(channel1=0, channel2=1)
-                    max_0 = max(abs(raw), max_0)
+        while ticks_ms() - start_time <= 500:
+            if self.ads_0 is not None:
+                readings_0.append(self.ads_0.read(channel1=0, channel2=1))
+            if self.ads_1 is not None:
+                readings_1.append(self.ads_1.read(channel1=0, channel2=1))
+            if self.ads_2 is not None:
+                readings_2.append(self.ads_2.read(channel1=0, channel2=1))
+            if self.ads_3 is not None:
+                readings_3.append(self.ads_3.read(channel1=0, channel2=1))
+                
+        final = []
+        pin = self.mux.get_active()
+        
+        # If we have ADS 0, calc and append
+        if self.ads_0 is not None and readings_0:
+            rms_0 = calculate_rms(readings_0)
+            final.append({"device": 0, "pin": pin, "current": linear_filter(rms_0)})
+            
+        # If we have ADS 1, calc and append
+        if self.ads_1 is not None and readings_1:
+            rms_1 = calculate_rms(readings_1)
+            final.append({"device": 1, "pin": pin, "current": linear_filter(rms_1)})
+            
+        # If we have ADS 2, calc and append
+        if self.ads_2 is not None and readings_2:
+            rms_2 = calculate_rms(readings_2)
+            final.append({"device": 2, "pin": pin, "current": linear_filter(rms_2)})
+            
+        # If we have ADS 3, calc and append
+        if self.ads_3 is not None and readings_3:
+            rms_3 = calculate_rms(readings_3)
+            final.append({"device": 3, "pin": pin, "current": linear_filter(rms_3)})
 
-                # Check ADS #2
-                if self.ads_1 is not None:
-                    raw = self.ads_1.read(channel1=0, channel2=1)
-                    max_1 = max(abs(raw), max_1)
-
-                # Check ADS #3
-                if self.ads_2 is not None:
-                    raw = self.ads_2.read(channel1=0, channel2=1)
-                    max_2 = max(abs(raw), max_2)
-
-                # Check ADS #4
-                if self.ads_3 is not None:
-                    raw = self.ads_3.read(channel1=0, channel2=1)
-                    max_3 = max(abs(raw), max_3)
-                
-                counter += 1
-            else: 
-                final = []
-                pin = self.mux.get_active();
-                
-                # If we have ADS 0, calc and append
-                if self.ads_0 is not None: final.append({"device": 0, "pin": pin, "current": max_0 * CT_MULTIPLIER})
-                
-                # If we have ADS 1, calc and append
-                if self.ads_1 is not None: final.append({"device": 1, "pin": pin, "current": max_1 * CT_MULTIPLIER})
-                
-                # If we have ADS 2, calc and append
-                if self.ads_2 is not None: final.append({"device": 2, "pin": pin, "current": max_2 * CT_MULTIPLIER})
-                
-                # If we have ADS 3, calc and append
-                if self.ads_3 is not None: final.append({"device": 3, "pin": pin, "current": max_3 * CT_MULTIPLIER})
-
-                return final
+        return final

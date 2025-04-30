@@ -72,7 +72,7 @@ class PicoMQTTClient:
     # Publish Measured Current to MQTT
     def publish_current(self, device, pin, data):
         topic = f"homeassistant/sensor/{MQTT['topic']}_{device}_{pin}/state"
-        self.publish(topic, data * AC_VOLTS)
+        self.publish(topic, round(data * AC_VOLTS, 2))
 
     # Raw publish
     def publish(self, topic, payload):
