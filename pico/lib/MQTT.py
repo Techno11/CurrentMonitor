@@ -38,6 +38,13 @@ class PicoMQTTClient:
     last_message = 0
     message_interval = 5
     counter = 0
+    
+    last = [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ]
 
     # Initilize
     def __init__(self, mac_address):
@@ -70,9 +77,17 @@ class PicoMQTTClient:
         self.publish(topic, data)
 
     # Publish Measured Current to MQTT
-    def publish_current(self, device, pin, data):
-        topic = f"homeassistant/sensor/{MQTT['topic']}_{device}_{pin}/state"
-        self.publish(topic, round(data * AC_VOLTS, 2))
+    def publish_current(self, device, pin, data):        
+        # Calculate wattage
+        calc = round(data * AC_VOLTS, 2)
+        
+        # Check if the data has changed
+        whole_number = int(calc)
+        if self.last[device][pin] == whole_number:
+            d_print(f"Data hasn't changed, not publishing device {device} pin {pin} ({data})")
+        else:
+            self.publish(f"homeassistant/sensor/{MQTT['topic']}_{device}_{pin}/state", calc)
+            self.last[device][pin] = whole_number
 
     # Raw publish
     def publish(self, topic, payload):
